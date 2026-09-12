@@ -567,20 +567,14 @@
 
   // Sincroniza a tabela inteira com o array local: grava tudo o que existe
   // localmente e apaga na base de dados o que já não existe cá.
+  // Só grava (insere/atualiza) — nunca apaga linhas que não estão no array
+  // local, para não haver risco de uma aba apagar o que outra acabou de criar.
   async function resyncTable(table, localArray, toDb){
-    if(!sb) return;
+    if(!sb || localArray.length === 0) return;
     try{
-      if(localArray.length > 0){
-        const rows = localArray.map(toDb);
-        const { error } = await sb.from(table).upsert(rows);
-        if(error) throw error;
-        const idList = localArray.map(r => `"${String(r.id).replace(/"/g,'')}"`).join(',');
-        const { error: delErr } = await sb.from(table).delete().not('id', 'in', `(${idList})`);
-        if(delErr) throw delErr;
-      }else{
-        const { error } = await sb.from(table).delete().neq('id', '__none__');
-        if(error) throw error;
-      }
+      const rows = localArray.map(toDb);
+      const { error } = await sb.from(table).upsert(rows);
+      if(error) throw error;
     }catch(err){
       console.error(err);
       showToast('Erro ao guardar dados — verifica a ligação à Supabase');
