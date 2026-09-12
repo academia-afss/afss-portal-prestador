@@ -139,6 +139,8 @@
   .btn.amber{background:var(--amber);border-color:var(--amber-deep);color:#fff;}
   .btn.amber:hover{background:var(--amber-deep);color:#fff;}
   .btn.ghost{background:transparent;color:var(--ink);border-color:#C9C2B2;}
+  .btn.ghost.on-dark{color:#fff;border-color:#5C5650;}
+  .btn.ghost.on-dark:hover{background:rgba(255,255,255,0.1);color:#fff;}
   .btn.ghost:hover{background:#EFEBE0;}
   .btn.danger{background:transparent;color:var(--danger);border-color:var(--danger);}
   .btn.danger:hover{background:var(--danger);color:#fff;}
@@ -247,16 +249,16 @@
         <input type="email" id="providerLoginEmail" placeholder="o-teu-email@exemplo.pt" style="padding:7px 10px;border:1px solid var(--steel);background:#201F1D;color:#fff;font-size:14px;font-family:'Inter',sans-serif;">
         <input type="password" id="providerLoginPass" placeholder="Password" style="padding:7px 10px;border:1px solid var(--steel);background:#201F1D;color:#fff;font-size:14px;font-family:'Inter',sans-serif;">
         <button class="btn amber small" id="providerLoginBtn" type="button">Entrar</button>
-        <button class="btn ghost small" id="providerSignupBtn" type="button">Criar conta (1ª vez)</button>
+        <button class="btn ghost small on-dark" id="providerSignupBtn" type="button">Criar conta (1ª vez)</button>
       </div>
       <div class="provider-id-picker" id="providerLoggedInBar" style="display:none;">
-        <button class="btn ghost small" id="providerLogoutBtn" type="button">Sair</button>
+        <button class="btn ghost small on-dark" id="providerLogoutBtn" type="button">Sair</button>
       </div>
     </div>
     <nav class="tabs" id="providerNav" style="display:none;">
       <button class="p-nav-tab active" data-pview="disponibilidades">Disponibilidades</button>
       <button class="p-nav-tab" data-pview="assistencias-p">Assistências</button>
-      <button class="p-nav-tab" data-pview="recibos">Recibos</button>
+      <button class="p-nav-tab" data-pview="recibos">Eventos</button>
       <button class="p-nav-tab" data-pview="stock-p">Stock</button>
     </nav>
   </header>
