@@ -251,7 +251,7 @@
         <button class="btn ghost small" id="providerLogoutBtn" type="button">Sair</button>
       </div>
     </div>
-    <nav class="tabs">
+    <nav class="tabs" id="providerNav" style="display:none;">
       <button class="p-nav-tab active" data-pview="disponibilidades">Disponibilidades</button>
       <button class="p-nav-tab" data-pview="assistencias-p">Assistências</button>
       <button class="p-nav-tab" data-pview="recibos">Recibos</button>
@@ -259,7 +259,12 @@
     </nav>
   </header>
 
-  <main>
+  <div id="providerLoggedOutScreen" class="empty-state" style="max-width:420px;margin:60px auto;padding:44px 28px;">
+    <p style="font-size:16px;margin-bottom:6px;">Precisas de iniciar sessão para acederes ao portal.</p>
+    <p style="font-size:13.5px;">Escreve o teu email no topo da página e clica em "Enviar link de acesso". Vamos mandar-te um link — basta abri-lo para entrares.</p>
+  </div>
+
+  <main id="providerMainContent" style="display:none;">
 
     <!-- ============ DISPONIBILIDADES ============ -->
     <section class="pview active" id="pview-disponibilidades">
@@ -685,8 +690,14 @@
     $('providerLoggedOutBar').style.display = session ? 'none' : 'flex';
     $('providerLoggedInBar').style.display = session ? 'flex' : 'none';
 
+    const loggedIn = !!(session && p);
+    $('providerNav').style.display = loggedIn ? 'flex' : 'none';
+    $('providerMainContent').style.display = loggedIn ? 'block' : 'none';
+    $('providerLoggedOutScreen').style.display = loggedIn ? 'none' : 'block';
+
     if(session && !p){
       $('providerGreeting').textContent = `Sessão iniciada como ${email}, mas não encontrei nenhum prestador com este email. Pede à gestão para o adicionar.`;
+      $('providerLoggedOutScreen').innerHTML = `<p style="font-size:16px;margin-bottom:6px;">Sessão iniciada, mas sem correspondência.</p><p style="font-size:13.5px;">Não encontrámos nenhum prestador com o email <strong>${escapeHtml(email)}</strong>. Pede à gestão para te adicionar com este email.</p>`;
     }else if(p){
       $('providerGreeting').textContent = `Olá, ${p.name}!`;
     }else{
