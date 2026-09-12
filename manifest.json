@@ -1,6 +1,6 @@
 {
-  "name": "AFSS — Portal do Prestador",
-  "short_name": "AFSS Prestador",
+  "name": "AFSS — Portal do Colaborador",
+  "short_name": "AFSS Colaborador",
   "description": "Disponibilidades, assistências, recibos e stock para prestadores AFSS",
   "start_url": "/",
   "scope": "/",
