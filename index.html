@@ -699,13 +699,23 @@
 
     if(session && !p){
       $('providerGreeting').textContent = `Sessão iniciada como ${email}, mas não encontrei nenhum prestador com este email. Pede à gestão para o adicionar.`;
-      $('providerLoggedOutScreen').innerHTML = `<p style="font-size:16px;margin-bottom:6px;">Sessão iniciada, mas sem correspondência.</p><p style="font-size:13.5px;">Não encontrámos nenhum prestador com o email <strong>${escapeHtml(email)}</strong>. Pede à gestão para te adicionar com este email.</p>`;
+      $('providerLoggedOutScreen').innerHTML = `<p style="font-size:16px;margin-bottom:6px;">Pedido enviado à gestão.</p><p style="font-size:13.5px;">Criámos a tua conta com o email <strong>${escapeHtml(email)}</strong>, mas ainda falta a gestão aprovar o teu acesso. Assim que aprovarem, entra normalmente com este email e password.</p>`;
+      registerPendingSignup(email);
     }else if(p){
       $('providerGreeting').textContent = `Olá, ${p.name}!`;
     }else{
       $('providerGreeting').textContent = 'Inicia sessão com o teu email para começar';
     }
     renderProviderAll();
+  }
+
+  async function registerPendingSignup(email){
+    if(!sb) return;
+    try{
+      await sb.from('pending_signups').upsert({ id: email, email: email, requested_at: new Date().toISOString() }, { onConflict: 'id' });
+    }catch(err){
+      console.error('Erro ao registar pedido de acesso', err);
+    }
   }
 
   $('providerLoginBtn').addEventListener('click', async ()=>{
