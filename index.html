@@ -497,13 +497,13 @@
     id: s.id, event_id: s.eventId, provider_id: s.providerId || null, name: s.name,
     day: s.day, time_start: s.timeStart, time_end: s.timeEnd, local: s.local || '',
     area: s.area || '', rate: s.rate, absent: !!s.absent, absent_reason: s.absentReason || '',
-    notes: s.notes || '', receipt_issued: !!s.receiptIssued
+    notes: s.notes || '', receipt_issued: !!s.receiptIssued, notified: !!s.notified
   });
   const fromDbStaff = r => ({
     id: r.id, eventId: r.event_id, providerId: r.provider_id, name: r.name,
     day: r.day, timeStart: r.time_start, timeEnd: r.time_end, local: r.local,
     area: r.area, rate: r.rate, absent: r.absent, absentReason: r.absent_reason,
-    notes: r.notes, receiptIssued: r.receipt_issued
+    notes: r.notes, receiptIssued: r.receipt_issued, notified: r.notified
   });
   const toDbProvider = p => ({
     id: p.id, name: p.name, email: (p.email||'').trim().toLowerCase(), contact: p.contact || '', service_type: p.serviceType,
@@ -771,12 +771,27 @@
   }
 
   function renderProviderAll(){
+    checkNewAllocations();
     renderProvDisponibilidades();
     renderProvAssistenciasEventoOptions();
     renderProvAssistencias();
     renderProvRecibos();
     renderProvStockOptions();
     renderProvStock();
+  }
+
+  async function checkNewAllocations(){
+    if(!currentProviderId) return;
+    const fresh = staff.filter(s=>s.providerId===currentProviderId && !s.notified);
+    if(fresh.length === 0) return;
+    const messages = fresh.map(s=>{
+      const ev = eventById(s.eventId);
+      const dateDisplay = s.day ? new Date(s.day+'T00:00:00').toLocaleDateString('pt-PT') : '';
+      return `"${ev?ev.name:'um evento'}"${dateDisplay ? ' — '+dateDisplay : ''}`;
+    });
+    fresh.forEach(s=> s.notified = true);
+    showToast(fresh.length === 1 ? `Foste alocado a ${messages[0]}` : `Foste alocado a ${fresh.length} eventos: ${messages.join('; ')}`);
+    await saveStaff();
   }
 
   // ---------------- Disponibilidades ----------------
