@@ -89,6 +89,10 @@
   }
   .p-nav-tab:hover{color:#EDEFF1;}
   .p-nav-tab.active{color:#fff;border-bottom-color:var(--amber);}
+  .nav-badge{
+    display:inline-block;background:var(--danger);color:#fff;font-size:11px;font-weight:700;
+    padding:1px 6px;border-radius:9px;margin-left:5px;vertical-align:2px;
+  }
 
   main{max-width:1220px;margin:0 auto;padding:28px 28px 80px 28px;}
   .pview{display:none;}
@@ -257,6 +261,7 @@
     </div>
     <nav class="tabs" id="providerNav" style="display:none;">
       <button class="p-nav-tab active" data-pview="disponibilidades">Disponibilidades</button>
+      <button class="p-nav-tab" data-pview="alertas-p">Alertas<span class="nav-badge" id="navBadgeAlertasP" style="display:none;"></span></button>
       <button class="p-nav-tab" data-pview="assistencias-p">Assistências</button>
       <button class="p-nav-tab" data-pview="recibos">Eventos</button>
       <button class="p-nav-tab" data-pview="stock-p">Stock</button>
@@ -281,6 +286,36 @@
           <div class="panel-body">
             <p class="hint" style="margin:0 0 14px 0;">Para cada evento, diz se estás disponível para o dia, horário e honorário indicados.</p>
             <div id="provDisponibilidadesContainer"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ALERTAS (prestador) ============ -->
+    <section class="pview" id="pview-alertas-p">
+      <div id="provNoIdEmpty4" class="empty-state" style="display:none;">
+        <p>Inicia sessão com o teu email no topo da página para veres os teus alertas.</p>
+      </div>
+      <div id="provAlertasContent">
+        <div class="panel plum">
+          <div class="panel-head"><h2>Novos eventos para a tua função</h2></div>
+          <div class="panel-body">
+            <p class="hint" style="margin:0 0 14px 0;">Eventos criados recentemente que precisam da tua função e ainda não respondeste.</p>
+            <div id="provAlertasNovosContainer"></div>
+          </div>
+        </div>
+        <div class="panel plum">
+          <div class="panel-head"><h2>Alocações</h2></div>
+          <div class="panel-body">
+            <p class="hint" style="margin:0 0 14px 0;">Eventos futuros onde já estás confirmado como equipa.</p>
+            <div id="provAlertasAlocacoesContainer"></div>
+          </div>
+        </div>
+        <div class="panel plum">
+          <div class="panel-head"><h2>Recibos pendentes</h2></div>
+          <div class="panel-body">
+            <p class="hint" style="margin:0 0 14px 0;">Eventos já concluídos onde ainda não marcaste o recibo como emitido.</p>
+            <div id="provAlertasRecibosContainer"></div>
           </div>
         </div>
       </div>
@@ -773,11 +808,120 @@
   function renderProviderAll(){
     checkNewAllocations();
     renderProvDisponibilidades();
+    renderProvAlertas();
     renderProvAssistenciasEventoOptions();
     renderProvAssistencias();
     renderProvRecibos();
     renderProvStockOptions();
     renderProvStock();
+  }
+
+  function renderProvAlertas(){
+    if(providerGuard('provNoIdEmpty4','provAlertasContent')) return;
+    const p = providers.find(x=>x.id===currentProviderId);
+    const myArea = p ? p.serviceType : null;
+
+    // 1. Novos eventos para a função, ainda sem resposta
+    const novos = events.filter(ev => daysUntil(ev.date) >= 0 && (ev.staffingNeeds||{})[myArea] > 0 && !getInvitation(ev.id, currentProviderId))
+      .sort((a,b)=>a.date.localeCompare(b.date));
+    const novosContainer = $('provAlertasNovosContainer');
+    if(novos.length === 0){
+      novosContainer.innerHTML = `<div class="empty-state"><p>Sem novidades — já respondeste a todos os eventos da tua função.</p></div>`;
+    }else{
+      novosContainer.innerHTML = `<div style="overflow-x:auto;"><table>
+        <thead><tr><th>Evento</th><th>Dia</th><th>Horário</th><th>Local</th><th>Honorário/h</th><th>Ações</th></tr></thead>
+        <tbody>${novos.map(ev=>{
+          const dateDisplay = new Date(ev.date+'T00:00:00').toLocaleDateString('pt-PT');
+          const horario = (ev.timeStart||ev.timeEnd) ? `${ev.timeStart||'—'}–${ev.timeEnd||'—'}` : '—';
+          const rate = suggestedRateFor(myArea, p, ev);
+          return `<tr>
+            <td><strong>${escapeHtml(ev.name)}</strong></td>
+            <td>${dateDisplay}</td>
+            <td>${horario}</td>
+            <td>${escapeHtml(ev.location)}</td>
+            <td>${fmtEuro(rate)}</td>
+            <td>
+              <div class="row-actions">
+                <button class="btn ghost small" data-action="prov-disp-sim" data-event="${ev.id}">Disponível</button>
+                <button class="btn danger small" data-action="prov-disp-nao" data-event="${ev.id}">Indisponível</button>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`;
+      novosContainer.querySelectorAll('[data-action="prov-disp-sim"]').forEach(b=>{
+        b.addEventListener('click', ()=> setProviderResponse(b.dataset.event, 'disponivel'));
+      });
+      novosContainer.querySelectorAll('[data-action="prov-disp-nao"]').forEach(b=>{
+        b.addEventListener('click', ()=> setProviderResponse(b.dataset.event, 'indisponivel'));
+      });
+    }
+
+    // 2. Alocações futuras
+    const alocacoes = staff.filter(s=>s.providerId===currentProviderId && s.day && daysUntil(s.day) >= 0)
+      .sort((a,b)=>(a.day||'').localeCompare(b.day||''));
+    const alocContainer = $('provAlertasAlocacoesContainer');
+    if(alocacoes.length === 0){
+      alocContainer.innerHTML = `<div class="empty-state"><p>Sem alocações futuras de momento.</p></div>`;
+    }else{
+      alocContainer.innerHTML = `<div style="overflow-x:auto;"><table>
+        <thead><tr><th>Evento</th><th>Dia</th><th>Início</th><th>Fim</th><th>Local</th></tr></thead>
+        <tbody>${alocacoes.map(s=>{
+          const ev = eventById(s.eventId);
+          const dateDisplay = new Date(s.day+'T00:00:00').toLocaleDateString('pt-PT');
+          return `<tr>
+            <td><strong>${escapeHtml(ev?ev.name:'—')}</strong></td>
+            <td>${dateDisplay}</td>
+            <td>${s.timeStart||'—'}</td>
+            <td>${s.timeEnd||'—'}</td>
+            <td>${escapeHtml(s.local||(ev?ev.location:'')||'—')}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`;
+    }
+
+    // 3. Recibos pendentes (eventos já concluídos)
+    const recibosPendentes = staff.filter(s=>s.providerId===currentProviderId && s.day && daysUntil(s.day) < 0 && !s.receiptIssued)
+      .sort((a,b)=>(b.day||'').localeCompare(a.day||''));
+    const recibosContainer = $('provAlertasRecibosContainer');
+    if(recibosPendentes.length === 0){
+      recibosContainer.innerHTML = `<div class="empty-state"><p>Sem recibos pendentes — está tudo em dia.</p></div>`;
+    }else{
+      recibosContainer.innerHTML = `<div style="overflow-x:auto;"><table>
+        <thead><tr><th>Evento</th><th>Dia</th><th>Valor a receber</th><th>Ação</th></tr></thead>
+        <tbody>${recibosPendentes.map(s=>{
+          const ev = eventById(s.eventId);
+          const h = staffHours(s);
+          const rate = (s.rate !== undefined && s.rate !== null) ? s.rate : (ev?ev.rate:25);
+          const val = h * rate;
+          const dateDisplay = new Date(s.day+'T00:00:00').toLocaleDateString('pt-PT');
+          return `<tr>
+            <td><strong>${escapeHtml(ev?ev.name:'—')}</strong></td>
+            <td>${dateDisplay}</td>
+            <td>${fmtEuro(val)}</td>
+            <td><button class="btn amber small" data-action="prov-alert-recibo" data-id="${s.id}">Marcar recibo emitido</button></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`;
+      recibosContainer.querySelectorAll('[data-action="prov-alert-recibo"]').forEach(b=>{
+        b.addEventListener('click', async ()=>{
+          const s = staff.find(x=>x.id===b.dataset.id);
+          if(!s) return;
+          s.receiptIssued = true;
+          await saveStaff();
+          renderProviderAll();
+        });
+      });
+    }
+
+    const badgeCount = novos.length + recibosPendentes.length;
+    const badge = $('navBadgeAlertasP');
+    if(badgeCount > 0){
+      badge.textContent = badgeCount;
+      badge.style.display = 'inline-block';
+    }else{
+      badge.style.display = 'none';
+    }
   }
 
   async function checkNewAllocations(){
