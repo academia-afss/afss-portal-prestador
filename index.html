@@ -866,7 +866,7 @@
       alocContainer.innerHTML = `<div class="empty-state"><p>Sem alocações futuras de momento.</p></div>`;
     }else{
       alocContainer.innerHTML = `<div style="overflow-x:auto;"><table>
-        <thead><tr><th>Evento</th><th>Dia</th><th>Início</th><th>Fim</th><th>Local</th></tr></thead>
+        <thead><tr><th>Evento</th><th>Dia</th><th>Início</th><th>Fim</th><th>Local</th><th>Observações</th></tr></thead>
         <tbody>${alocacoes.map(s=>{
           const ev = eventById(s.eventId);
           const dateDisplay = new Date(s.day+'T00:00:00').toLocaleDateString('pt-PT');
@@ -876,6 +876,7 @@
             <td>${s.timeStart||'—'}</td>
             <td>${s.timeEnd||'—'}</td>
             <td>${escapeHtml(s.local||(ev?ev.location:'')||'—')}</td>
+            <td style="max-width:220px;white-space:normal;">${escapeHtml(s.notes||'—')}</td>
           </tr>`;
         }).join('')}</tbody>
       </table></div>`;
@@ -932,7 +933,8 @@
     const messages = fresh.map(s=>{
       const ev = eventById(s.eventId);
       const dateDisplay = s.day ? new Date(s.day+'T00:00:00').toLocaleDateString('pt-PT') : '';
-      return `"${ev?ev.name:'um evento'}"${dateDisplay ? ' — '+dateDisplay : ''}`;
+      const noteText = s.notes ? ` — Nota: ${s.notes}` : '';
+      return `"${ev?ev.name:'um evento'}"${dateDisplay ? ' — '+dateDisplay : ''}${noteText}`;
     });
     fresh.forEach(s=> s.notified = true);
     showToast(fresh.length === 1 ? `Foste alocado a ${messages[0]}` : `Foste alocado a ${fresh.length} eventos: ${messages.join('; ')}`);
