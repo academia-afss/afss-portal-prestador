@@ -1,4 +1,4 @@
-const CACHE_NAME = 'afss-prestador-shell-v1';
+const CACHE_NAME = 'afss-prestador-shell-v1x';
 const SHELL_FILES = ['/', '/index.html', '/icon-192.png', '/icon-512.png', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
