@@ -1,5 +1,5 @@
 const CACHE_NAME = 'afss-prestador-shell-v1x';
-const SHELL_FILES = ['/', '/index.html', '/icon-192.png', '/icon-512.png', '/manifest.json'];
+const SHELL_FILES = ['/', '/index.html', '/icon-192-v2.png', '/icon-512-v2.png', '/apple-touch-icon-v2.png', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
