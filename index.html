@@ -275,6 +275,7 @@
   .modal{background:var(--panel);color:var(--ink);}
   .modal-backdrop{background:rgba(0,0,0,0.72);}
   footer.foot{color:#777;}
+  .ev-notes{font-size:12px;color:var(--ink-soft);white-space:pre-line;max-width:260px;margin-top:3px;}
 </style>
 </head>
 <body>
@@ -560,14 +561,14 @@
     time_start: e.timeStart, time_end: e.timeEnd, location: e.location, morada: e.morada || '',
     rate: e.rate, staffing_needs: e.staffingNeeds || {}, area_rates: e.areaRates || {},
     invoice_sent: !!e.invoiceSent, fees_paid: !!e.feesPaid, receipt_issued: !!e.receiptIssued,
-    billing_notes: e.billingNotes || '', created_at: e.createdAt || new Date().toISOString()
+    billing_notes: e.billingNotes || '', notes: e.notes || '', created_at: e.createdAt || new Date().toISOString()
   });
   const fromDbEvent = r => ({
     id: r.id, name: r.name, serviceType: r.service_type, date: r.date,
     timeStart: r.time_start, timeEnd: r.time_end, location: r.location, morada: r.morada || '',
     rate: r.rate, staffingNeeds: r.staffing_needs || {}, areaRates: r.area_rates || {},
     invoiceSent: r.invoice_sent, feesPaid: r.fees_paid, receiptIssued: r.receipt_issued,
-    billingNotes: r.billing_notes, createdAt: r.created_at
+    billingNotes: r.billing_notes, notes: r.notes || '', createdAt: r.created_at
   });
   const toDbStaff = s => ({
     id: s.id, event_id: s.eventId, provider_id: s.providerId || null, name: s.name,
@@ -911,7 +912,7 @@
           const ev = eventById(s.eventId);
           const dateDisplay = new Date(s.day+'T00:00:00').toLocaleDateString('pt-PT');
           return `<tr>
-            <td><strong>${escapeHtml(ev?ev.name:'—')}</strong></td>
+            <td><strong>${escapeHtml(ev?ev.name:'—')}</strong>${ev&&ev.notes ? `<div class="ev-notes">${escapeHtml(ev.notes)}</div>` : ''}</td>
             <td>${dateDisplay}</td>
             <td>${s.timeStart||'—'}</td>
             <td>${s.timeEnd||'—'}</td>
@@ -938,7 +939,7 @@
           const val = h * rate;
           const dateDisplay = new Date(s.day+'T00:00:00').toLocaleDateString('pt-PT');
           return `<tr>
-            <td><strong>${escapeHtml(ev?ev.name:'—')}</strong></td>
+            <td><strong>${escapeHtml(ev?ev.name:'—')}</strong>${ev&&ev.notes ? `<div class="ev-notes">${escapeHtml(ev.notes)}</div>` : ''}</td>
             <td>${dateDisplay}</td>
             <td>${fmtEuro(val)}</td>
             <td><button class="btn amber small" data-action="prov-alert-recibo" data-id="${s.id}">Marcar recibo emitido</button></td>
@@ -1120,7 +1121,7 @@
       if(!s.receiptIssued) pendCount++;
       const dateDisplay = s.day ? new Date(s.day+'T00:00:00').toLocaleDateString('pt-PT') : '—';
       return `<tr>
-        <td><strong>${escapeHtml(ev?ev.name:'—')}</strong></td>
+        <td><strong>${escapeHtml(ev?ev.name:'—')}</strong>${ev&&ev.notes ? `<div class="ev-notes">${escapeHtml(ev.notes)}</div>` : ''}</td>
         <td>${dateDisplay}</td>
         <td>${s.timeStart||'—'}</td>
         <td>${s.timeEnd||'—'}</td>
