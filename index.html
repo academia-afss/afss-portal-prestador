@@ -561,7 +561,7 @@
     time_start: e.timeStart, time_end: e.timeEnd, location: e.location, morada: e.morada || '',
     rate: e.rate, staffing_needs: e.staffingNeeds || {}, area_rates: e.areaRates || {},
     invoice_sent: !!e.invoiceSent, fees_paid: !!e.feesPaid, receipt_issued: !!e.receiptIssued,
-    billing_notes: e.billingNotes || '', notes: e.notes || '', created_at: e.createdAt || new Date().toISOString()
+    billing_notes: e.billingNotes || '', created_at: e.createdAt || new Date().toISOString()
   });
   const fromDbEvent = r => ({
     id: r.id, name: r.name, serviceType: r.service_type, date: r.date,
@@ -640,6 +640,25 @@
       console.error('Erro ao carregar dados', err);
       showToast('Erro ao ligar à base de dados');
     }
+    await loadEventNotes();
+  }
+
+  // Observações dos eventos: tabela protegida (só gestores e colaboradores alocados as conseguem ler)
+  var notesLoadedFor = null;
+  async function loadEventNotes(){
+    if(!sb) return;
+    try{
+      const { data, error } = await sb.from('event_notes').select('event_id,notes');
+      if(error){ console.error('Observações dos eventos', error); return; }
+      const map = new Map((data||[]).map(r=>[r.event_id, r.notes||'']));
+      events.forEach(ev=>{ ev.notes = map.get(ev.id) || ''; });
+    }catch(err){ console.error('Erro ao carregar observações', err); }
+  }
+  async function saveEventNotes(eventId, notes){
+    if(!sb) return false;
+    const { error } = await sb.from('event_notes').upsert({ event_id: eventId, notes: notes || '', updated_at: new Date().toISOString() }, { onConflict: 'event_id' });
+    if(error){ console.error('Guardar observações', error); return false; }
+    return true;
   }
 
   // Sincroniza a tabela inteira com o array local: grava tudo o que existe
@@ -680,6 +699,7 @@
       .on('postgres_changes', { event: '*', schema: 'public', table: 'stock' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'assistances' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'invitations' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_notes' }, scheduleRefresh)
       .subscribe();
   }
 
@@ -759,6 +779,8 @@
 
   function applyProviderSession(session){
     const email = session && session.user && session.user.email ? session.user.email.toLowerCase() : null;
+    if(email && notesLoadedFor !== email){ notesLoadedFor = email; loadEventNotes().then(()=>{ renderProviderAll(); }); }
+    if(!email && notesLoadedFor){ notesLoadedFor = null; events.forEach(ev=>{ ev.notes = ''; }); }
     const p = email ? providers.find(x => (x.email||'').toLowerCase() === email) : null;
     currentProviderId = p ? p.id : null;
 
