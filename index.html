@@ -276,6 +276,15 @@
   .modal-backdrop{background:rgba(0,0,0,0.72);}
   footer.foot{color:#777;}
   .ev-notes{font-size:12px;color:var(--ink-soft);white-space:pre-line;max-width:260px;margin-top:3px;}
+
+  .modal-backdrop{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:50;padding:20px;}
+  .modal-backdrop.show{display:flex;}
+  .modal{background:var(--panel);color:var(--ink);max-width:420px;width:100%;padding:24px;border-top:4px solid var(--amber);}
+  .modal h3{margin:0 0 8px 0;font-size:19px;}
+  .modal p{margin:0 0 12px 0;font-size:14px;color:var(--ink-soft);}
+  .modal-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;}
+
+  .pw-input{width:100%;padding:10px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--ink);font-size:14px;font-family:'Inter',sans-serif;box-sizing:border-box;margin-top:8px;}
 </style>
 </head>
 <body>
@@ -295,6 +304,7 @@
         <input type="password" id="providerLoginPass" placeholder="Password" style="padding:7px 10px;border:1px solid var(--steel);background:#201F1D;color:#fff;font-size:14px;font-family:'Inter',sans-serif;">
         <button class="btn amber small" id="providerLoginBtn" type="button">Entrar</button>
         <button class="btn ghost small on-dark" id="providerSignupBtn" type="button">Criar conta (1ª vez)</button>
+        <button class="btn ghost small on-dark" id="providerForgotBtn" type="button">Esqueci-me da password</button>
       </div>
       <div class="provider-id-picker" id="providerLoggedInBar" style="display:none;">
         <button class="btn ghost small on-dark" id="providerLogoutBtn" type="button">Sair</button>
@@ -512,6 +522,20 @@
 
 <footer class="foot">AFSS · Portal do Colaborador — dados guardados automaticamente</footer>
 
+<div class="modal-backdrop" id="newPassBackdrop">
+  <div class="modal" style="max-width:400px;">
+    <h3>Definir nova password</h3>
+    <p>Escolhe a tua nova password (mínimo 6 caracteres).</p>
+    <input type="password" id="newPass1" class="pw-input" placeholder="Nova password" autocomplete="new-password">
+    <input type="password" id="newPass2" class="pw-input" placeholder="Repetir a nova password" autocomplete="new-password">
+    <p id="newPassError" style="color:var(--danger);font-size:13px;margin:8px 0 0 0;display:none;"></p>
+    <div class="modal-actions" style="margin-top:14px;">
+      <button class="btn ghost" id="newPassCancel">Cancelar</button>
+      <button class="btn amber" id="newPassSave">Guardar password</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -524,11 +548,12 @@
   // 3. Cola aqui o Project URL e a chave "anon public" (Project Settings > API)
   const SUPABASE_URL = 'https://lenquadkumdryhqrippz.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxlbnF1YWRrdW1kcnlocXJpcHB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkxMDY2NTksImV4cCI6MjEwNDY4MjY1OX0.-Obuei7WyKBQGsvT0A1mHy9HN4E-UIhNylW96zdIQvc';
+  const AUTH_HASH = window.location.hash || '';
   const sb = (typeof supabase !== 'undefined' && SUPABASE_URL.startsWith('http'))
     ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     : null;
   if(sb){
-    sb.auth.onAuthStateChange((_event, session) => { applyProviderSession(session); });
+    sb.auth.onAuthStateChange((event, session) => { applyProviderSession(session); if(event === 'PASSWORD_RECOVERY') openNewPasswordModal(); });
   }
 
   // ---------------- State ----------------
@@ -831,6 +856,60 @@
     $('providerLoginBtn').disabled = false;
     $('providerLoginBtn').textContent = 'Entrar';
   });
+
+  // ---------------- Recuperar password ----------------
+  async function pedirRecuperacaoPassword(email, app){
+    email = (email || '').trim().toLowerCase();
+    if(!email){ showToast('Escreve primeiro o teu email e depois carrega em "Esqueci-me da password"'); return false; }
+    if(!sb){ showToast('Sem ligação. Tenta outra vez.'); return false; }
+    try{
+      const { data, error } = await sb.functions.invoke('request-password-reset', { body: { email, app } });
+      if(error || (data && data.ok === false)){ showToast('Não foi possível enviar agora. Tenta outra vez daqui a um minuto.'); return false; }
+      showToast('Se este email tiver conta, vais receber um link para definir uma nova password. Vê também a pasta de spam.');
+      return true;
+    }catch(err){
+      console.error(err);
+      showToast('Não foi possível enviar agora. Tenta outra vez.');
+      return false;
+    }
+  }
+  var newPassShown = false;
+  function openNewPasswordModal(){
+    if(newPassShown) return;
+    newPassShown = true;
+    $('newPass1').value = ''; $('newPass2').value = '';
+    $('newPassError').style.display = 'none';
+    $('newPassBackdrop').classList.add('show');
+    setTimeout(()=> $('newPass1').focus(), 50);
+  }
+  $('newPassCancel').addEventListener('click', ()=> $('newPassBackdrop').classList.remove('show'));
+  $('newPassSave').addEventListener('click', async ()=>{
+    const p1 = $('newPass1').value, p2 = $('newPass2').value;
+    const erro = (m)=>{ $('newPassError').textContent = m; $('newPassError').style.display = 'block'; };
+    if(p1.length < 6) return erro('A password precisa de pelo menos 6 caracteres.');
+    if(p1 !== p2) return erro('As duas passwords não são iguais.');
+    if(!sb) return erro('Sem ligação. Tenta outra vez.');
+    const btn = $('newPassSave');
+    btn.disabled = true;
+    const { error } = await sb.auth.updateUser({ password: p1 });
+    btn.disabled = false;
+    if(error){
+      const t = String(error.message || '');
+      return erro(/session|expired|jwt|missing/i.test(t) ? 'O link expirou. Pede um novo em "Esqueci-me da password".'
+        : /different|same/i.test(t) ? 'A nova password tem de ser diferente da anterior.' : 'Não foi possível guardar. Tenta outra vez.');
+    }
+    $('newPassBackdrop').classList.remove('show');
+    showToast('Password atualizada. Já tens sessão iniciada.');
+    if(typeof afterPasswordUpdated === 'function') await afterPasswordUpdated();
+  });
+  ['newPass1','newPass2'].forEach(id=> $(id).addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); $('newPassSave').click(); } }));
+  $('providerForgotBtn').addEventListener('click', ()=> pedirRecuperacaoPassword($('providerLoginEmail').value, 'portal'));
+  if(/error_code=|[#&]error=/.test(AUTH_HASH)){
+    setTimeout(()=> showToast(/expired/.test(AUTH_HASH) ? 'O link de recuperação expirou. Pede um novo em "Esqueci-me da password".' : 'O link de recuperação não é válido. Pede um novo.'), 900);
+  }
+  if(/type=recovery/.test(AUTH_HASH)){
+    setTimeout(()=>{ if(sb) sb.auth.getSession().then(({ data })=>{ if(data && data.session) openNewPasswordModal(); }); }, 1500);
+  }
 
   $('providerSignupBtn').addEventListener('click', async ()=>{
     if(!sb){ showToast('Liga a app à Supabase primeiro'); return; }
