@@ -583,14 +583,14 @@
   // ---------------- Mapeamento camelCase (app) <-> snake_case (Supabase) ----------------
   const toDbEvent = e => ({
     id: e.id, name: e.name, service_type: e.serviceType, date: e.date,
-    time_start: e.timeStart, time_end: e.timeEnd, location: e.location, morada: e.morada || '',
+    time_start: e.timeStart, time_end: e.timeEnd, location: e.location, morada: e.morada || '', status: e.status || 'confirmado',
     rate: e.rate, staffing_needs: e.staffingNeeds || {}, area_rates: e.areaRates || {},
     invoice_sent: !!e.invoiceSent, fees_paid: !!e.feesPaid, receipt_issued: !!e.receiptIssued,
     billing_notes: e.billingNotes || '', created_at: e.createdAt || new Date().toISOString()
   });
   const fromDbEvent = r => ({
     id: r.id, name: r.name, serviceType: r.service_type, date: r.date,
-    timeStart: r.time_start, timeEnd: r.time_end, location: r.location, morada: r.morada || '',
+    timeStart: r.time_start, timeEnd: r.time_end, location: r.location, morada: r.morada || '', status: r.status || 'confirmado',
     rate: r.rate, staffingNeeds: r.staffing_needs || {}, areaRates: r.area_rates || {},
     invoiceSent: r.invoice_sent, feesPaid: r.fees_paid, receiptIssued: r.receipt_issued,
     billingNotes: r.billing_notes, notes: r.notes || '', createdAt: r.created_at
@@ -965,7 +965,7 @@
     const myArea = p ? p.serviceType : null;
 
     // 1. Novos eventos para a função, ainda sem resposta
-    const novos = events.filter(ev => daysUntil(ev.date) >= 0 && (ev.staffingNeeds||{})[myArea] > 0 && !getInvitation(ev.id, currentProviderId))
+    const novos = events.filter(ev => daysUntil(ev.date) >= 0 && (ev.staffingNeeds||{})[myArea] > 0 && (ev.status || 'confirmado') !== 'cancelado' && !getInvitation(ev.id, currentProviderId))
       .sort((a,b)=>a.date.localeCompare(b.date));
     const novosContainer = $('provAlertasNovosContainer');
     if(novos.length === 0){
@@ -1089,7 +1089,7 @@
     const container = $('provDisponibilidadesContainer');
     const p = providers.find(x=>x.id===currentProviderId);
     const myArea = p ? p.serviceType : null;
-    const upcoming = events.filter(ev => daysUntil(ev.date) >= 0 && (ev.staffingNeeds||{})[myArea] > 0).sort((a,b)=>a.date.localeCompare(b.date));
+    const upcoming = events.filter(ev => daysUntil(ev.date) >= 0 && (ev.staffingNeeds||{})[myArea] > 0 && (ev.status || 'confirmado') !== 'cancelado').sort((a,b)=>a.date.localeCompare(b.date));
     if(upcoming.length === 0){
       container.innerHTML = `<div class="empty-state"><p>Não há eventos futuros que precisem da tua função (${escapeHtml(myArea||'—')}) de momento.</p></div>`;
       return;
