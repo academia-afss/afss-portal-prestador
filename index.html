@@ -862,7 +862,7 @@
   // ---------------- Recibos verdes ----------------
   var receipts = [];
   const fromDbReceipt = r => ({ id: r.id, staffId: r.staff_id, providerId: r.provider_id, eventId: r.event_id, filePath: r.file_path, fileName: r.file_name,
-    mime: r.mime, uploadedAt: r.uploaded_at, status: r.status, rejectReason: r.reject_reason, validatedBy: r.validated_by, validatedAt: r.validated_at, sentFinanceAt: r.sent_finance_at });
+    mime: r.mime, uploadedAt: r.uploaded_at, status: r.status, rejectReason: r.reject_reason, validatedBy: r.validated_by, validatedAt: r.validated_at, sentFinanceAt: r.sent_finance_at, paidAt: r.paid_at, paidBy: r.paid_by });
   async function loadReceipts(){
     if(!sb) return;
     try{
@@ -873,7 +873,7 @@
   }
   function receiptForStaff(staffId){ return receipts.find(r=>r.staffId===staffId) || null; }
   function receiptTagHtml(rc){
-    if(rc.status === 'validado') return rc.sentFinanceAt ? '<span class="tag ok">Validado · enviado ao financeiro</span>' : '<span class="tag ok">Validado</span>';
+    if(rc.status === 'validado') return rc.paidAt ? '<span class="tag ok">Liquidado</span>' : rc.sentFinanceAt ? '<span class="tag ok">Validado · enviado ao financeiro</span>' : '<span class="tag ok">Validado</span>';
     if(rc.status === 'rejeitado') return '<span class="tag low">Rejeitado</span>';
     return '<span class="tag future">Por validar</span>';
   }
@@ -902,7 +902,7 @@
       if(upErr){ console.error(upErr); showToast('Não foi possível carregar o recibo. Confirma que é PDF ou imagem e tenta outra vez.'); return; }
       const anterior = receiptForStaff(s.id);
       const row = { staff_id: s.id, provider_id: s.providerId, event_id: s.eventId, file_path: path, file_name: file.name, mime: file.type || null,
-        uploaded_at: new Date().toISOString(), status: 'pendente', reject_reason: null, validated_by: null, validated_at: null, sent_finance_at: null, sent_by: null };
+        uploaded_at: new Date().toISOString(), status: 'pendente', reject_reason: null, validated_by: null, validated_at: null, sent_finance_at: null, sent_by: null, paid_at: null, paid_by: null };
       const { error } = await sb.from('staff_receipts').upsert(row, { onConflict: 'staff_id' });
       if(error){
         console.error(error);
