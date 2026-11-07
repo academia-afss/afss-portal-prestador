@@ -467,7 +467,7 @@
             <div style="overflow-x:auto;">
             <table id="tblRecibos">
               <thead>
-                <tr><th>Evento</th><th>Dia</th><th>Início</th><th>Fim</th><th>Local</th><th>Horas</th><th>Honorário/h</th><th>Valor a receber</th><th>Recibo emitido</th></tr>
+                <tr><th>Evento</th><th>Dia</th><th>Início</th><th>Fim</th><th>Local</th><th>Horas</th><th>Honorário/h</th><th>Valor a receber</th><th>Recibo emitido</th><th>Recibo verde</th></tr>
               </thead>
               <tbody></tbody>
             </table>
@@ -666,6 +666,7 @@
       showToast('Erro ao ligar à base de dados');
     }
     await loadEventNotes();
+    await loadReceipts();
   }
 
   // Observações dos eventos: tabela protegida (só gestores e colaboradores alocados as conseguem ler)
@@ -725,6 +726,7 @@
       .on('postgres_changes', { event: '*', schema: 'public', table: 'assistances' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'invitations' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'event_notes' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_receipts' }, scheduleRefresh)
       .subscribe();
   }
 
@@ -804,8 +806,8 @@
 
   function applyProviderSession(session){
     const email = session && session.user && session.user.email ? session.user.email.toLowerCase() : null;
-    if(email && notesLoadedFor !== email){ notesLoadedFor = email; loadEventNotes().then(()=>{ renderProviderAll(); }); }
-    if(!email && notesLoadedFor){ notesLoadedFor = null; events.forEach(ev=>{ ev.notes = ''; }); }
+    if(email && notesLoadedFor !== email){ notesLoadedFor = email; Promise.all([loadEventNotes(), loadReceipts()]).then(()=>{ renderProviderAll(); }); }
+    if(!email && notesLoadedFor){ notesLoadedFor = null; receipts = []; events.forEach(ev=>{ ev.notes = ''; }); }
     const p = email ? providers.find(x => (x.email||'').toLowerCase() === email) : null;
     currentProviderId = p ? p.id : null;
 
@@ -855,6 +857,80 @@
     }
     $('providerLoginBtn').disabled = false;
     $('providerLoginBtn').textContent = 'Entrar';
+  });
+
+  // ---------------- Recibos verdes ----------------
+  var receipts = [];
+  const fromDbReceipt = r => ({ id: r.id, staffId: r.staff_id, providerId: r.provider_id, eventId: r.event_id, filePath: r.file_path, fileName: r.file_name,
+    mime: r.mime, uploadedAt: r.uploaded_at, status: r.status, rejectReason: r.reject_reason, validatedBy: r.validated_by, validatedAt: r.validated_at, sentFinanceAt: r.sent_finance_at });
+  async function loadReceipts(){
+    if(!sb) return;
+    try{
+      const { data, error } = await sb.from('staff_receipts').select('*');
+      if(error){ console.error('Recibos', error); return; }
+      receipts = (data||[]).map(fromDbReceipt);
+    }catch(err){ console.error('Erro ao carregar recibos', err); }
+  }
+  function receiptForStaff(staffId){ return receipts.find(r=>r.staffId===staffId) || null; }
+  function receiptTagHtml(rc){
+    if(rc.status === 'validado') return rc.sentFinanceAt ? '<span class="tag ok">Validado · enviado ao financeiro</span>' : '<span class="tag ok">Validado</span>';
+    if(rc.status === 'rejeitado') return '<span class="tag low">Rejeitado</span>';
+    return '<span class="tag future">Por validar</span>';
+  }
+  function reciboVerdeCellHtml(s){
+    const rc = receiptForStaff(s.id);
+    if(!rc) return `<button class="btn amber small" data-action="up-recibo" data-id="${s.id}">Carregar recibo</button>`;
+    const podeSubstituir = rc.status !== 'validado';
+    return `${receiptTagHtml(rc)} <a href="#" data-action="ver-recibo" data-path="${escapeHtml(rc.filePath)}" style="color:var(--amber);font-size:12.5px;">Ver</a>`
+      + (podeSubstituir ? ` · <a href="#" data-action="up-recibo" data-id="${s.id}" style="color:var(--amber);font-size:12.5px;">Substituir</a>` : '')
+      + (rc.status === 'rejeitado' && rc.rejectReason ? `<div style="font-size:12px;color:var(--danger);margin-top:3px;">Motivo: ${escapeHtml(rc.rejectReason)}</div>` : '');
+  }
+  function uploadRecibo(staffId){
+    const s = staff.find(x=>x.id===staffId);
+    if(!s || !sb){ showToast('Sem ligação. Tenta outra vez.'); return; }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/pdf,image/*';
+    input.onchange = async ()=>{
+      const file = input.files && input.files[0];
+      if(!file) return;
+      if(file.size > 10*1024*1024){ showToast('O ficheiro tem mais de 10 MB. Envia um PDF ou foto mais pequeno.'); return; }
+      showToast('A carregar o recibo…');
+      const ext = ((file.name.split('.').pop() || 'pdf').toLowerCase().replace(/[^a-z0-9]/g,'')) || 'pdf';
+      const path = `${s.id}/${Date.now()}.${ext}`;
+      const { error: upErr } = await sb.storage.from('recibos').upload(path, file, { contentType: file.type || 'application/octet-stream' });
+      if(upErr){ console.error(upErr); showToast('Não foi possível carregar o recibo. Confirma que é PDF ou imagem e tenta outra vez.'); return; }
+      const anterior = receiptForStaff(s.id);
+      const row = { staff_id: s.id, provider_id: s.providerId, event_id: s.eventId, file_path: path, file_name: file.name, mime: file.type || null,
+        uploaded_at: new Date().toISOString(), status: 'pendente', reject_reason: null, validated_by: null, validated_at: null, sent_finance_at: null, sent_by: null };
+      const { error } = await sb.from('staff_receipts').upsert(row, { onConflict: 'staff_id' });
+      if(error){
+        console.error(error);
+        await sb.storage.from('recibos').remove([path]);
+        showToast('Não foi possível registar o recibo. Se já estiver validado, fala com a gestão.');
+        return;
+      }
+      if(anterior && anterior.filePath && anterior.filePath !== path) sb.storage.from('recibos').remove([anterior.filePath]);
+      if(!s.receiptIssued){ s.receiptIssued = true; await saveStaff(); }
+      await loadReceipts();
+      if(typeof renderProviderAll === 'function') renderProviderAll();
+      if(typeof renderRecibosFat === 'function') renderRecibosFat();
+      showToast('Recibo carregado. Vai ser validado pela gestão.');
+    };
+    input.click();
+  }
+  async function verRecibo(path){
+    if(!sb || !path) return;
+    const w = window.open('', '_blank');
+    const { data, error } = await sb.storage.from('recibos').createSignedUrl(path, 600);
+    if(error || !data || !data.signedUrl){ if(w) w.close(); showToast('Não foi possível abrir o recibo.'); return; }
+    if(w) w.location.href = data.signedUrl; else window.location.href = data.signedUrl;
+  }
+  document.addEventListener('click', (e)=>{
+    const up = e.target.closest('[data-action="up-recibo"]');
+    if(up){ e.preventDefault(); uploadRecibo(up.dataset.id); return; }
+    const ver = e.target.closest('[data-action="ver-recibo"]');
+    if(ver){ e.preventDefault(); verRecibo(ver.dataset.path); }
   });
 
   // ---------------- Recuperar password ----------------
@@ -1043,7 +1119,7 @@
             <td><strong>${escapeHtml(ev?ev.name:'—')}</strong>${ev&&ev.notes ? `<div class="ev-notes">${escapeHtml(ev.notes)}</div>` : ''}</td>
             <td>${dateDisplay}</td>
             <td>${fmtEuro(val)}</td>
-            <td><button class="btn amber small" data-action="prov-alert-recibo" data-id="${s.id}">Marcar recibo emitido</button></td>
+            <td><div class="row-actions"><button class="btn amber small" data-action="up-recibo" data-id="${s.id}">Carregar recibo verde</button><button class="btn ghost small" data-action="prov-alert-recibo" data-id="${s.id}">Já entreguei de outra forma</button></div></td>
           </tr>`;
         }).join('')}</tbody>
       </table></div>`;
@@ -1207,7 +1283,7 @@
     const list = staff.filter(s=>s.providerId===currentProviderId).slice().sort((a,b)=>(b.day||'').localeCompare(a.day||''));
     const tbody = document.querySelector('#tblRecibos tbody');
     if(list.length===0){
-      tbody.innerHTML = `<tr class="empty-row"><td colspan="9">Ainda não tens registos de trabalho associados.</td></tr>`;
+      tbody.innerHTML = `<tr class="empty-row"><td colspan="10">Ainda não tens registos de trabalho associados.</td></tr>`;
       $('provTotalReceber').textContent = fmtEuro(0);
       $('provTotalPendenteRecibo').textContent = '0';
       return;
@@ -1231,6 +1307,7 @@
         <td>${fmtEuro(rate)}</td>
         <td>${fmtEuro(val)}</td>
         <td><span class="toggle-pill ${s.receiptIssued?'yes':'no'}" data-action="prov-toggle-receipt" data-id="${s.id}">${s.receiptIssued?'Sim':'Não'}</span></td>
+        <td style="min-width:150px;">${reciboVerdeCellHtml(s)}</td>
       </tr>`;
     }).join('');
     $('provTotalReceber').textContent = fmtEuro(totalVal);
