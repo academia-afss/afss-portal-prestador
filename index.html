@@ -285,6 +285,14 @@
   .modal-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;}
 
   .pw-input{width:100%;padding:10px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--ink);font-size:14px;font-family:'Inter',sans-serif;box-sizing:border-box;margin-top:8px;}
+
+  .turno-linha{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 0;border-bottom:1px dashed var(--line);}
+  .turno-linha:last-child{border-bottom:none;}
+  .turno-linha .btn{font-size:16px;padding:11px 20px;}
+  .ev-date .d.d-multi{font-size:17px;}
+  .dias-multi{display:flex;flex-wrap:wrap;gap:8px;}
+  .dias-multi label{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--input-border);background:var(--input-bg);font-size:13px;cursor:pointer;color:var(--ink);}
+  .dias-multi input{width:auto;margin:0;}
 </style>
 </head>
 <body>
@@ -327,6 +335,7 @@
   <main id="providerMainContent" style="display:none;">
 
     <!-- ============ DISPONIBILIDADES ============ -->
+    <div id="provTurnosHoje"></div>
     <section class="pview active" id="pview-disponibilidades">
       <div id="provNoIdEmpty1" class="empty-state" style="display:none;">
         <p>Inicia sessão com o teu email no topo da página para veres os eventos e dares a tua disponibilidade.</p>
@@ -583,14 +592,14 @@
   // ---------------- Mapeamento camelCase (app) <-> snake_case (Supabase) ----------------
   const toDbEvent = e => ({
     id: e.id, name: e.name, service_type: e.serviceType, date: e.date,
-    time_start: e.timeStart, time_end: e.timeEnd, location: e.location, morada: e.morada || '', status: e.status || 'confirmado',
+    time_start: e.timeStart, time_end: e.timeEnd, location: e.location, morada: e.morada || '', status: e.status || 'confirmado', date_end: e.dateEnd || null,
     rate: e.rate, staffing_needs: e.staffingNeeds || {}, area_rates: e.areaRates || {},
     invoice_sent: !!e.invoiceSent, fees_paid: !!e.feesPaid, receipt_issued: !!e.receiptIssued,
     billing_notes: e.billingNotes || '', created_at: e.createdAt || new Date().toISOString()
   });
   const fromDbEvent = r => ({
     id: r.id, name: r.name, serviceType: r.service_type, date: r.date,
-    timeStart: r.time_start, timeEnd: r.time_end, location: r.location, morada: r.morada || '', status: r.status || 'confirmado',
+    timeStart: r.time_start, timeEnd: r.time_end, location: r.location, morada: r.morada || '', status: r.status || 'confirmado', dateEnd: r.date_end || '',
     rate: r.rate, staffingNeeds: r.staffing_needs || {}, areaRates: r.area_rates || {},
     invoiceSent: r.invoice_sent, feesPaid: r.fees_paid, receiptIssued: r.receipt_issued,
     billingNotes: r.billing_notes, notes: r.notes || '', createdAt: r.created_at
@@ -605,7 +614,7 @@
     id: r.id, eventId: r.event_id, providerId: r.provider_id, name: r.name,
     day: r.day, timeStart: r.time_start, timeEnd: r.time_end, local: r.local,
     area: r.area, rate: r.rate, absent: r.absent, absentReason: r.absent_reason,
-    notes: r.notes, receiptIssued: r.receipt_issued, notified: r.notified
+    notes: r.notes, receiptIssued: r.receipt_issued, notified: r.notified, checkinAt: r.checkin_at || null, checkoutAt: r.checkout_at || null, checkinBy: r.checkin_by || null, checkoutBy: r.checkout_by || null
   });
   const toDbProvider = p => ({
     id: p.id, name: p.name, email: (p.email||'').trim().toLowerCase(), contact: p.contact || '', service_type: p.serviceType,
@@ -859,6 +868,85 @@
     $('providerLoginBtn').textContent = 'Entrar';
   });
 
+  // ---------------- Turnos: entrada e saída ----------------
+  function evFim(ev){ return (ev && ev.dateEnd && ev.dateEnd > ev.date) ? ev.dateEnd : (ev ? ev.date : ''); }
+  function turnoJanela(s){
+    if(!s || !s.day) return null;
+    const ini = new Date(`${s.day}T${(s.timeStart || '00:00').slice(0,5)}:00`);
+    if(isNaN(ini)) return null;
+    let fim;
+    if(s.timeStart && s.timeEnd){
+      fim = new Date(`${s.day}T${s.timeEnd.slice(0,5)}:00`);
+      if(fim <= ini) fim = new Date(fim.getTime() + 86400000);
+    }else fim = new Date(ini.getTime() + 86400000);
+    return { inicio: ini, fim };
+  }
+  function horaCurta(iso){ return iso ? new Date(iso).toLocaleTimeString('pt-PT', { hour:'2-digit', minute:'2-digit' }) : ''; }
+  function turnoEstado(s){
+    if(s.absent) return { key:'falta', label:'Falta', cls:'absent' };
+    if(s.checkoutAt) return { key:'terminado', label:`Saiu às ${horaCurta(s.checkoutAt)}`, cls:'past' };
+    if(s.checkinAt) return { key:'em_turno', label:`Em turno desde ${horaCurta(s.checkinAt)}`, cls:'ok' };
+    const j = turnoJanela(s), agora = new Date();
+    if(j && agora > j.fim) return { key:'sem_registo', label:'Sem registo de entrada', cls:'low' };
+    if(j && agora > new Date(j.inicio.getTime() + 10*60000)) return { key:'atrasado', label:'Atrasado — sem entrada', cls:'low' };
+    return { key:'por_entrar', label:`Entra às ${s.timeStart || '—'}`, cls:'future' };
+  }
+  async function registarTurno(staffId, acao){
+    if(!sb){ showToast('Sem ligação. Tenta outra vez.'); return false; }
+    const { data, error } = await sb.rpc('staff_check', { p_staff_id: staffId, p_action: acao });
+    if(error){ showToast(error.message || 'Não foi possível registar.'); return false; }
+    const s = staff.find(x=>x.id===staffId);
+    if(s && data){ s.checkinAt = data.checkin_at; s.checkoutAt = data.checkout_at; s.checkinBy = data.checkin_by; s.checkoutBy = data.checkout_by; }
+    showToast(acao === 'entrada' ? 'Entrada registada' : acao === 'saida' ? 'Saída registada' : 'Registo anulado');
+    if(typeof renderAll === 'function') renderAll();
+    if(typeof renderProviderAll === 'function' && currentProviderId) renderProviderAll();
+    return true;
+  }
+  document.addEventListener('click', async (e)=>{
+    const b = e.target.closest('[data-turno-acao]');
+    if(!b) return;
+    e.preventDefault();
+    if(b.dataset.turnoAcao === 'anular' && !confirm('Anular o registo de entrada e saída deste turno?')) return;
+    if(b.dataset.turnoAcao === 'saida' && !confirm('Registar a saída agora?')) return;
+    b.disabled = true;
+    await registarTurno(b.dataset.id, b.dataset.turnoAcao);
+    b.disabled = false;
+  });
+  function renderProvTurnosHoje(){
+    const box = $('provTurnosHoje');
+    if(!box) return;
+    if(!currentProviderId){ box.innerHTML = ''; return; }
+    const agora = new Date();
+    const meus = staff.filter(s=> s.providerId === currentProviderId && !s.absent).filter(s=>{
+      const j = turnoJanela(s);
+      if(!j) return false;
+      if(s.checkoutAt && agora > new Date(new Date(s.checkoutAt).getTime() + 2*3600000)) return false;
+      return agora >= new Date(j.inicio.getTime() - 2*3600000) && agora <= new Date(j.fim.getTime() + 12*3600000);
+    }).sort((a,b)=> turnoJanela(a).inicio - turnoJanela(b).inicio);
+    if(!meus.length){ box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="panel" style="border-left:4px solid var(--amber);">
+      <div class="panel-head"><h2>Os teus turnos de hoje</h2></div>
+      <div class="panel-body">${meus.map(s=>{
+        const ev = eventById(s.eventId);
+        const est = turnoEstado(s);
+        const j = turnoJanela(s);
+        const podeEntrar = agora >= new Date(j.inicio.getTime() - 2*3600000) && agora <= j.fim;
+        const acao = !s.checkinAt
+          ? (podeEntrar ? `<button class="btn amber" data-turno-acao="entrada" data-id="${s.id}">Registar entrada</button>` : '<span style="color:var(--ink-soft);font-size:13px;">Prazo de entrada terminado — fala com a gestão</span>')
+          : !s.checkoutAt ? `<button class="btn amber" data-turno-acao="saida" data-id="${s.id}">Registar saída</button>`
+          : `<span style="color:var(--ink-soft);font-size:13px;">Entrada ${horaCurta(s.checkinAt)} · Saída ${horaCurta(s.checkoutAt)}</span>`;
+        return `<div class="turno-linha">
+          <div>
+            <strong>${escapeHtml(ev ? ev.name : 'Evento')}</strong>
+            <div style="font-size:13px;color:var(--ink-soft);">${new Date(s.day+'T00:00:00').toLocaleDateString('pt-PT')} · ${s.timeStart||'—'}–${s.timeEnd||'—'}${(s.local || (ev && ev.location)) ? ' · ' + escapeHtml(s.local || ev.location) : ''}</div>
+            <div style="margin-top:5px;"><span class="tag ${est.cls}">${est.label}</span></div>
+          </div>
+          <div>${acao}</div>
+        </div>`;
+      }).join('')}</div></div>`;
+  }
+  setInterval(()=>{ if(document.visibilityState === 'visible'){ renderProvTurnosHoje(); if(typeof renderTurnosHoje === 'function') renderTurnosHoje(); } }, 60000);
+
   // ---------------- Recibos verdes ----------------
   var receipts = [];
   const fromDbReceipt = r => ({ id: r.id, staffId: r.staff_id, providerId: r.provider_id, eventId: r.event_id, filePath: r.file_path, fileName: r.file_name,
@@ -1026,6 +1114,7 @@
 
   function renderProviderAll(){
     checkNewAllocations();
+    renderProvTurnosHoje();
     renderProvDisponibilidades();
     renderProvAlertas();
     renderProvAssistenciasEventoOptions();
@@ -1041,7 +1130,7 @@
     const myArea = p ? p.serviceType : null;
 
     // 1. Novos eventos para a função, ainda sem resposta
-    const novos = events.filter(ev => daysUntil(ev.date) >= 0 && (ev.staffingNeeds||{})[myArea] > 0 && (ev.status || 'confirmado') !== 'cancelado' && !getInvitation(ev.id, currentProviderId))
+    const novos = events.filter(ev => daysUntil(evFim(ev)) >= 0 && (ev.staffingNeeds||{})[myArea] > 0 && (ev.status || 'confirmado') !== 'cancelado' && !getInvitation(ev.id, currentProviderId))
       .sort((a,b)=>a.date.localeCompare(b.date));
     const novosContainer = $('provAlertasNovosContainer');
     if(novos.length === 0){
@@ -1165,7 +1254,7 @@
     const container = $('provDisponibilidadesContainer');
     const p = providers.find(x=>x.id===currentProviderId);
     const myArea = p ? p.serviceType : null;
-    const upcoming = events.filter(ev => daysUntil(ev.date) >= 0 && (ev.staffingNeeds||{})[myArea] > 0 && (ev.status || 'confirmado') !== 'cancelado').sort((a,b)=>a.date.localeCompare(b.date));
+    const upcoming = events.filter(ev => daysUntil(evFim(ev)) >= 0 && (ev.staffingNeeds||{})[myArea] > 0 && (ev.status || 'confirmado') !== 'cancelado').sort((a,b)=>a.date.localeCompare(b.date));
     if(upcoming.length === 0){
       container.innerHTML = `<div class="empty-state"><p>Não há eventos futuros que precisem da tua função (${escapeHtml(myArea||'—')}) de momento.</p></div>`;
       return;
